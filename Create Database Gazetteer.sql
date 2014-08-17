@@ -1,20 +1,28 @@
+USE master;
+GO
+IF EXISTS(SELECT * FROM sys.sysdatabases where name='Gazetteer')
+    DROP DATABASE [Gazetteer];
+GO
+
 CREATE DATABASE [Gazetteer]
 	CONTAINMENT = NONE
-	ON (NAME = N'Gazetteer', FILENAME = N'E:\MSSQL\Data\Gazetteer_Pri.mdf', SIZE = 1000KB, MAXSIZE = UNLIMITED , FILEGROWTH = 1024KB)
-	LOG ON (NAME = N'Gazetteer_log', FILENAME = N'E:\MSSQL\Data\Gazetteer_log.ldf', SIZE = 10000MB, MAXSIZE = UNLIMITED , FILEGROWTH = 10%)
+	ON (NAME = N'Gazetteer', FILENAME = N'E:\MSSQL\Data\Gazetteer_Pri.mdf', SIZE = 4048MB, MAXSIZE = UNLIMITED , FILEGROWTH = 1024KB)
+	LOG ON (NAME = N'Gazetteer_log', FILENAME = N'E:\MSSQL\Data\Gazetteer_log.ldf', SIZE = 1000MB, MAXSIZE = UNLIMITED , FILEGROWTH = 1000MB)
 	COLLATE SQL_Latin1_General_CP1_CI_AS
 	WITH 
-                        FILESTREAM (NON_TRANSACTED_ACCESS = OFF),
-                        DB_CHAINING OFF,
-                        TRUSTWORTHY OFF
+	  FILESTREAM (NON_TRANSACTED_ACCESS = OFF),
+	  DB_CHAINING OFF,
+	  TRUSTWORTHY OFF;
+
 GO
-ALTER DATABASE [Gazetteer] ADD FILEGROUP [Secondary]
+ALTER DATABASE [Gazetteer] ADD FILEGROUP [Secondary];
 GO
-ALTER DATABASE [Gazetteer] MODIFY FILEGROUP [Secondary] DEFAULT
+ALTER DATABASE [Gazetteer] ADD FILE (NAME = N'Gazetteer_sec', FILENAME = N'E:\MSSQL\Data\Gazetteer_Sec.ndf', SIZE = 1000MB, MAXSIZE = UNLIMITED , FILEGROWTH = 1000MB) TO FILEGROUP [Secondary];
 GO
-ALTER DATABASE [Gazetteer] ADD FILE (NAME = N'Gazetteer_sec', FILENAME = N'E:\MSSQL\Data\Gazetteer_Sec.ndf', SIZE = 1000MB, MAXSIZE = UNLIMITED , FILEGROWTH = 1000MB) TO FILEGROUP [Secondary]
+ALTER DATABASE [Gazetteer] MODIFY FILEGROUP [Secondary] DEFAULT;
 GO
-ALTER DATABASE [Gazetteer] ADD FILEGROUP [IndexFileGroup]
+ALTER DATABASE [Gazetteer] ADD FILEGROUP [IndexFileGroup];
 GO
-ALTER DATABASE [Gazetteer] ADD FILE (NAME = N'Gazetteer_inx', FILENAME = N'E:\MSSQL\DATA\Gazetteer_ind.ndf', SIZE = 1000MB, MAXSIZE = UNLIMITED , FILEGROWTH = 1000MB) TO FILEGROUP [IndexFileGroup]
+ALTER DATABASE [Gazetteer] ADD FILE (NAME = N'Gazetteer_inx', FILENAME = N'E:\MSSQL\DATA\Gazetteer_ind.ndf', SIZE = 1000MB, MAXSIZE = UNLIMITED , FILEGROWTH = 1000MB) TO FILEGROUP [IndexFileGroup];
 GO
+
