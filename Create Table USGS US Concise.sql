@@ -1,6 +1,5 @@
 Use Gazetteer;
 GO
-
 CREATE TABLE USGS.[Concise] 
  ( 
 	[FEATURE_ID]     	            int NULL,
@@ -18,7 +17,7 @@ CREATE TABLE USGS.[Concise]
 	[SOURCE_LONG_DMS]	varchar(8) NULL,
 	[SOURCE_LAT_DEC] 	numeric(11,7) NULL,
 	[SOURCE_LONG_DEC]	numeric(12,7) NULL,
-	[ELEV_IN_M]]      	int NULL,
+	[ELEV_IN_M]      	int NULL,
 	[MAP_NAME]       	varchar(100) NULL,
 	[DATE_CREATED]   date NULL,
 	[DATE_EDITED]    	date NULL 

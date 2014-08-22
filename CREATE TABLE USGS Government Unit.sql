@@ -8,7 +8,7 @@ CREATE TABLE USGS.[GovernmentUnit]
 	[COUNTY_NAME]    	varchar(100) NULL,
 	[STATE_NUMERIC]  	varchar(2) NULL,
 	[STATE_ALPHA]    	            varchar(2) NULL,
-            [STATE_NAME]    	            varchar(2) NULL,
+            [STATE_NAME]    	            varchar(100) NULL,
             [COUNTRY_ALPHA]   	varchar(2) NULL,
             [COUNTRY_NAME]   	varchar(100) NULL,
 	[FEATURE_NAME]             varchar(120) NULL
@@ -16,3 +16,4 @@ CREATE TABLE USGS.[GovernmentUnit]
 ON [Secondary]
 WITH (DATA_COMPRESSION = NONE)
 GO
+

@@ -7,7 +7,8 @@ INSERT INTO USGS.FileEdition (TableName, FileVintageDate)
                         ('HistoricalFeature', '20140802'),
                         ('Government Unit', '20140802'),
                         ('AllName', '20140802'),
-                        ('FeatureDescriptionHistory', '20140802')
+                        ('FeatureDescriptionHistory', '20140802'),
+                        ('NationalFederalCode', '20140802')
 ;
 SELECT
 *
