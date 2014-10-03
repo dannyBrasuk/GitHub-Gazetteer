@@ -1,4 +1,13 @@
-Use Gazetteer;
+/*
+Import the flat file of ALL Names into this "work" table.  From here, it gets massaged and written out elsewhere tables to support the "App."
+
+Names in this table are unofficial, alternative names to those found in the National File.  Often the names
+are historical.
+
+September 2014
+
+*/
+USE Gazetteer;
 GO
 
 CREATE TABLE USGS.[AllName] 

@@ -1,3 +1,12 @@
+/*
+Create and initialize table of standardized US state names and IDs.
+
+"StateFlag" refers to whether the "state" is one of the 50 plus the District of Columbia, or a territory, etc.
+
+September 2014
+
+*/
+
 USE Gazetteer;
 GO
 IF OBJECT_ID('AppData.StateFilter') IS NOT NULL

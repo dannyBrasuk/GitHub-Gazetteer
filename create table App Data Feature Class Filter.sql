@@ -1,4 +1,12 @@
-use Gazetteer;
+/*
+
+Standarded set of Feature Classes.
+
+September 2014
+
+*/
+
+USE Gazetteer;
 GO
 
 CREATE TABLE AppData.FeatureClassFilter

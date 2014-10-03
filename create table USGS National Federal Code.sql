@@ -1,4 +1,13 @@
-use Gazetteer;
+/*
+Import the flat file of Federal Codes of  features (e.g., FIPS Codes)  into this "work" table.  
+
+Note that the table is not actually used in this application.
+
+September 2014
+
+*/
+
+USE Gazetteer;
 GO
 CREATE TABLE [USGS].[NationalFederalCode]  ( 
 	[FEATURE_ID]         	int NOT NULL,

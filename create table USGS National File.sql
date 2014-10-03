@@ -1,4 +1,13 @@
-Use Gazetteer;
+/*
+Import the flat file of  "official" feature names into this "work" table.  From here, it gets massaged and written out elsewhere tables to support the "App."
+
+Note that "map name" refers to an index name of a map document, rather than a label to display on a map.
+
+September 2014
+
+*/
+
+USE Gazetteer;
 GO
 
 CREATE TABLE USGS.[NationalFile] 
