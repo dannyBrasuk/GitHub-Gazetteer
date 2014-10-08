@@ -14,11 +14,13 @@ GO
 
 SET ROWCOUNT 0;
 
+--TRUNCATE TABLE AppData.FeatureSearchFilter ;
+GO
 INSERT INTO AppData.FeatureSearchFilter 
     (   FeatureID,FeatureClass_fk,StateFeatureID,CountyFeatureID,HistoricalFlag,PopulatedPlaceFlag,
         Longitude,Latitude, Geog)
 
-    SELECT  
+SELECT  
 
 nf.[FEATURE_ID] as FeatureID,
 
@@ -38,8 +40,8 @@ CASE
 END AS PopulatedPlaceFlag,
 
 --spatial filter  -- Note - it's NAD 83 (4269)!  But to avoid reprojection, I'm going to pretend WGS 84 (4326). Close enough.
-nf.[PRIM_LAT_DEC] AS Latitude,
 nf.[PRIM_LONG_DEC] AS Longitude,
+nf.[PRIM_LAT_DEC] AS Latitude,
 
 geography::Point(nf.[PRIM_LAT_DEC], nf.[PRIM_LONG_DEC] , 4326)
 
