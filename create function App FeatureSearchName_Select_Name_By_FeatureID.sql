@@ -1,7 +1,7 @@
 Use Gazetteer;
 GO
 IF Object_ID(N'App.fnFeatureSearchName_Select_Name_By_FeatureID') IS NOT NULL
-    DROP TYPE App.fnFeatureSearchName_Select_Name_By_FeatureID;
+    DROP FUNCTION App.fnFeatureSearchName_Select_Name_By_FeatureID;
 GO
 CREATE FUNCTION App.fnFeatureSearchName_Select_Name_By_FeatureID (@FeatureID  INT)
 RETURNS VARCHAR(120)

@@ -6,8 +6,7 @@ GO
 CREATE PROCEDURE [App].[FeatureSearchName_Select_FeatureID_ByFeatureName]
 
 --Search Target Table  (include feature ID;  limit it to the classes of interest)
---[ ]   AS App.table type
-
+@FeatureSearchCandidates AS App.FeatureKeyList,
 
 --Feature Name Search (fuzzy)
 @FeatureNameSearchRequest VARCHAR(120) = '',

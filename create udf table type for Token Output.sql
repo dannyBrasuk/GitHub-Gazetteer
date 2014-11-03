@@ -1,5 +1,5 @@
 GO
-IF Object_ID(N'App.TokenizerOutput') IS NOT NULL
+IF Type_ID(N'App.TokenizerOutput') IS NOT NULL
     DROP TYPE App.TokenizerOutput;
 GO
 CREATE TYPE App.TokenizerOutput AS TABLE 

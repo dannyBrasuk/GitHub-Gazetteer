@@ -1,35 +1,27 @@
 Use Gazetteer;
 GO
 
-/*
-Note: the logic here is a little unlikely. target of feature search is likely to be more broad
+DECLARE @RC AS INT;
+DECLARE @FeatureClassList AS App.FeatureClassList;
 
-On the other hand, distance should be a ranking element,
-
-*/
-/*
-    Match Request
-*/
-
-DECLARE 
-    @RC AS INT;
-
-DECLARE @RC INT;
+INSERT INTO @FeatureClassList (FeatureClassID)
+    VALUES (41);
 
 EXEC  @RC =  [App].[FeatureSearchManager]
 
 @MaximumNumberOfSearchCandidates  = 50
 
-@featureNameSearchRequest = 'Jen Weld Field',
+@FeatureNameSearchRequest = 'Jen Weld',
 
-@latitude  =  45.528666,
-@longitude  = -122.694135,
-@distanceInKilometers  =  5 ,
+@Latitude  =  45.528666,
+@Longitude  = -122.694135,
+@DistanceInKilometers  =  5 ,
 
-@statePostalCode = 'OR',
+@StatePostalCode = 'OR',
 
-@featureClass_fk = 37
+@FeatureClassList = @FeatureClassList
 ;
+
 
 /*
 
@@ -46,6 +38,9 @@ lat/long for apartment is:  45.528666, -122.694135
 EXEC App.Feature_Select_ForDisplay 
 
 select * from App.vFeatureData_SelectForDisplay where FeatureID in (2070794, 1124541)
+
+select * from App.vFeatureData_SelectForDisplay where StatePostalCode = 'GA' and featureClass_fk = 37
+
 
 Jeld Wen Field is a Locale feature class (37)
 A "park" is feature class fk 41

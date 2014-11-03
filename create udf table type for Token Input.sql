@@ -2,7 +2,7 @@ Use Gazetteer;
 GO
 
 
-IF Object_ID(N'App.TokenizerInput') IS NOT NULL
+IF Type_ID(N'App.TokenizerInput') IS NOT NULL
     DROP TYPE App.TokenizerInput;
 GO
 CREATE TYPE [App].[TokenizerInput] AS TABLE 
