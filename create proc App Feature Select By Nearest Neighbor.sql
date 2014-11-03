@@ -8,7 +8,6 @@ CREATE PROCEDURE [App].[Feature_Select_ByNearestNeighbor]
     @latitude float =  0,
     @longitude float = 0,
     @distanceInKilometers INT =  0 ,
-    @StatePostalCode VARCHAR(2) = '',
     @NumberOfCandidates INT = 0
 
 AS
@@ -25,8 +24,7 @@ DECLARE
 ;
 DECLARE
     @searchPoint geography = geography::Point(@latitude, @longitude, 4326) ,
-    @distanceInMeters INT = @distanceInKilometers * 1000,
-    @stateFeatureID int = (SELECT FeatureID FROM AppData.StateFilter WHERE StatePostalCode=@StatePostalCode)
+    @distanceInMeters INT = @distanceInKilometers * 1000
 ;
 
 BEGIN
@@ -37,16 +35,14 @@ BEGIN
                 EXEC [App].[ProcedureLog_Merge] @ProcedureLog_fk = @ProcedureLog_fk OUT, @ParameterSet = @ParameterSet, @StatusMessage = @StatusMessage, @ProcedureName = @ProcedureName;
 
                     --Candidates are returned back to the controller proc
-                                    SELECT
-                                    TOP (@NumberOfCandidates)
-                                    b.FeatureID,
-                                    CAST(ROUND(b.geog.STDistance(@searchPoint),0) AS INT) AS DistanceInMeters
-                                    FROM AppData.FeatureSearchFilter b  WITH (INDEX = sidxFeatureSearchFilter_geog)
-                                    WHERE 
-                                        b.StateFeatureID = @stateFeatureID
-                                        AND
-                                        b.geog.STDistance(@searchPoint) < @distanceInMeters
-                                    ORDER BY b.geog.STDistance(@searchPoint);
+                SELECT
+                    TOP (@NumberOfCandidates)
+                    b.FeatureID,
+                    CAST(ROUND(b.geog.STDistance(@searchPoint),0) AS INT) AS DistanceInMeters
+                FROM AppData.FeatureSearchFilter b  WITH (INDEX = sidxFeatureSearchFilter_geog)
+                WHERE 
+                    b.geog.STDistance(@searchPoint) < @distanceInMeters
+                ORDER BY b.geog.STDistance(@searchPoint);
 
                 SET @StatusMessage = 'Success';
                 EXEC [App].[ProcedureLog_Merge] @ProcedureLog_fk = @ProcedureLog_fk, @StatusMessage = @StatusMessage, @ReturnCode = @RC;
@@ -78,7 +74,6 @@ EXEC [App].[Feature_Select_ByNearestNeighbor]
     @latitude  =  33.9595924,
     @longitude  = -84.4651686,
     @distanceInKilometers  =  50 ,
-    @StatePostalCode  = 'GA',
     @NumberOfCandidates  = 10
 
 GO 
