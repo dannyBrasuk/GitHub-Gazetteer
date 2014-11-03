@@ -9,5 +9,6 @@ Tokenizer_sfk INT NOT NULL,
 TokenOrdinal INT NOT NULL,
 Token VARCHAR(128) NOT NULL,
 TokenLength AS (LEN(Token)),
-Metaphone2 App.DoubleMetaphoneResult NULL
+Metaphone2 App.DoubleMetaphoneResult NULL,
+IgnoreTokenFlag BIT NULL
 );
