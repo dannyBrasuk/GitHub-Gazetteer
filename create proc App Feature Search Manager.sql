@@ -5,6 +5,11 @@ IF OBJECT_ID('App.FeatureSearchManager') IS NOT NULL
 GO
 CREATE PROCEDURE [App].[FeatureSearchManager]
 
+           /*
+                  Manages search requests from the App.  Does not support the paged browser option.
+                  Always assumes a location coordinate.
+            */
+
 --Requireed Minimum
 @MaximumNumberOfSearchCandidates AS INT = 50,
 @CurrentLocationLatitude AS FLOAT =  0,
@@ -19,8 +24,10 @@ CREATE PROCEDURE [App].[FeatureSearchManager]
 --State filter
 @StatePostalCode AS VARCHAR(2) = '',
 
---Feature Class Filters.  TODO - convert to a table type of INT class fk
-@FeatureClassList AS App.FeatureClassList
+--Feature Class Filters. 
+@FeatureClassList AS App.FeatureClassList READONLY,
+
+@Debug BIT = 0
 
 AS
 
@@ -43,6 +50,7 @@ BEGIN
                 @searchPoint geography = geography::Point(@CurrentLocationLatitude, @CurrentLocationLongitude, 4326) ,
                 @distanceInMeters INT = @distanceInKilometers * 1000
                 ;
+        DECLARE  @FeatureSearchCandidates AS App.FeatureKeyList;
 
         SET @ParameterSet = 'Search X/Y= ' + CAST(@CurrentLocationLongitude AS VARCHAR(20)) 
                             + ' / ' + CAST(@CurrentLocationLatitude AS VARCHAR(20)) 
@@ -55,68 +63,63 @@ BEGIN
         */
         IF @CurrentLocationLatitude IS NULL OR @CurrentLocationLongitude IS NULL
                 BEGIN
-                    SET @RC = -1;
+                    SET @RC = -2;
                     RAISERROR ('Insufficient parameters. Must have at least latitude and longitude.', 16, 1);
                 END
 
-        /*
-             Built a list of Feature ID keys based on the options and data presented.
-        */
-
-        DECLARE  @FeatureSearchCandidates AS App.FeatureKeyList;
-
            /*
-                   Nearest neightbor option
+                   Nearest neightbor option, ....
             */
 
             IF ISNULL(@DistanceInKilometers,0) > 0
                 BEGIN
-                        INSERT INTO @FeatureSearchCandidates  (FeatureID, DistanceInMeters)
-                                EXEC App.Feature_Select_ByNearestNeighbor 
-                                    @Latitude  =  @Latitude,
-                                    @Longitude  = @Longitude,
-                                    @DistanceInKilometers  =  @DistanceInKilometers ,
-                                    @NumberOfCandidates  = @MaximumNumberOfSearchCandidates
-                                ;
+
+                        INSERT INTO @FeatureSearchCandidates  (FeatureID, DistanceInMeters)                        
+                            SELECT  FeatureID, DistanceInMeters
+                            FROM App.fnNearestFeatures (@CurrentLocationLatitude, @CurrentLocationLongitude, @DistanceInKilometers, @MaximumNumberOfSearchCandidates);
+
                         SET @RC = @@Rowcount;        
                         SET @StatusMessage =+ App.fnStatusMessage(@StatusMessage,'Nearest Neighbor completed.', @RC);
                         EXEC [App].[ProcedureLog_Merge] @ProcedureLog_fk = @ProcedureLog_fk, @StatusMessage = @StatusMessage;
-                END
+ 
+               END
             ELSE
-                /*
-                        OR, ... state option
-                 */ 
-               BEGIN
-                        IF ISNULL(@StatePostalCode,'') <> ''
-                             INSERT INTO @FeatureSearchCandidates  (FeatureID,DistanceInMeters)
-                                    SELECT FeatureID, 
-                                                      CAST(ROUND(f.geog.STDistance(@searchPoint),0) AS INT) AS DistanceInMeters
-                                    FROM AppData.FeatureSearchFilter f
-                                    JOIN AppData.StateFilter s ON f.StateFeatureID = s.FeatureID
-                                    WHERE s.StatePostalCode = @StatePostalCode
-    
-                         SET @RC = @@Rowcount;        
-                         SET @StatusMessage =+ App.fnStatusMessage(@StatusMessage,'Nearest Neighbor completed.', @RC);
-                         EXEC [App].[ProcedureLog_Merge] @ProcedureLog_fk = @ProcedureLog_fk, @StatusMessage = @StatusMessage;
-                END
+                    /*
+                            OR, ... state option
+                   */ 
+                   BEGIN
+                            IF ISNULL(@StatePostalCode,'') <> ''
+                                 INSERT INTO @FeatureSearchCandidates  (FeatureID,DistanceInMeters)
+                                        SELECT f.FeatureID, 
+                                                          CAST(ROUND(f.geog.STDistance(@searchPoint),0) AS INT) AS DistanceInMeters
+                                        FROM AppData.FeatureSearchFilter f
+                                        JOIN AppData.StateFilter s ON f.StateFeatureID = s.FeatureID
+                                        WHERE s.StatePostalCode = @StatePostalCode
+
+                             SET @RC = @@Rowcount;        
+                             SET @StatusMessage =+ App.fnStatusMessage(@StatusMessage,'Nearest Neighbor completed.', @RC);
+                             EXEC [App].[ProcedureLog_Merge] @ProcedureLog_fk = @ProcedureLog_fk, @StatusMessage = @StatusMessage;
+
+                    END
 
            /*
                    Reduce  feature candidate selection by Feature Class filters
             */
-            DECLARE @DeleteMe AS TABLE (FeatureID INT NOT NULL);
-
             IF EXISTS (SELECT FeatureClassID FROM @FeatureClassList)
                     BEGIN
 
-                            --If Feature Classes are filtered, force in Locale, since its sort an all purpose class
-                            IF NOT EXISTS (SELECT FeatureClassID FROM @FeatureClassList WHERE FeatureClassID = 37)
-                                INSERT INTO @FeatureClassList (FeatureClassID) VALUES (37);
+                            DECLARE @DeleteMe AS TABLE (FeatureID INT NOT NULL);
+
+                            --If Feature Classes are filtered, force in Locale, since its kinda of an all purpose class
+--                            IF NOT EXISTS (SELECT FeatureClassID FROM @FeatureClassList WHERE FeatureClassID = 37)
+--                                INSERT INTO @FeatureClassList (FeatureClassID) VALUES (37);
 
                             INSERT INTO @DeleteMe (FeatureID)
                                 SELECT c.FeatureID
-                                FROM @Candidates c
+                                FROM @FeatureSearchCandidates c
                                 JOIN AppData.FeatureSearchFilter f ON c.FeatureID = f.FeatureID
                                 JOIN @FeatureClassList fc ON fc.FeatureClassID <> f.featureClass_fk
+                                WHERE f.featureClass_fk <> 37;
                                 ;
 
                         DELETE FROM @FeatureSearchCandidates WHERE FeatureID IN (SELECT FeatureID FROM @DeleteMe);
@@ -127,22 +130,45 @@ BEGIN
 
                  END
 
- 
-   
-                --Fuzzy name search; if requested.
+                /*
+                      Fuzzy name search, if requested.  If so, then pass in the @FeatureSearchCandidates as the target.
+                */
+
                 IF ISNULL(@FeatureNameSearchRequest,'') <> ''
 
                     BEGIN
+--convert to a table function
+                               DECLARE  @InputList AS App.NameSearchRequestList;
+                                INSERT INTO @InputList(NameRequest)
+                                     VALUES    (@FeatureNameSearchRequest);
 
-                              EXEC App.FeatureSearchName_Select_FeatureID_ByFeatureName
-                                   @FeatureSearchTarget = @FeatureSearchCandidates
-                                    @FeatureNameSearchRequest  = @featureNameSearchRequest 
+                              EXEC @RC = App.FeatureSearchName_Select_FeatureID_ByFeatureName
+                                    @FeatureSearchCandidates = @FeatureSearchCandidates,
+                                    @FeatureNameSearchRequest  = @InputList,
+                                    @Debug = 1
 
                               --JOIN BACK to Distance and FeatureNameSequenceNumber, to enhance the ranking
 
-                     END
+                        SET @RC = @@Rowcount;        
+                        SET @StatusMessage =+ App.fnStatusMessage(@StatusMessage,'Execute fuzzy name search.', @RC);
+                        EXEC [App].[ProcedureLog_Merge] @ProcedureLog_fk = @ProcedureLog_fk, @StatusMessage = @StatusMessage;
 
-                SET @StatusMessage = 'Success';
+                     END
+                --If Fuzzy name search not invoked, then return @FeatureSearchCandidates
+                ELSE
+
+                         BEGIN
+
+                                 SELECT 
+                                            s.FeatureID,
+                                            s.DistanceInMeters
+                                    FROM @FeatureSearchCandidates s
+   
+                                    SET @RC = @@RowCount;
+
+                         END
+
+                SET @StatusMessage =+ App.fnStatusMessage(@StatusMessage,'Completed.', @RC);
                 EXEC [App].[ProcedureLog_Merge] @ProcedureLog_fk = @ProcedureLog_fk, @StatusMessage = @StatusMessage, @ReturnCode = @RC;
 
 	END TRY
@@ -170,33 +196,3 @@ RETURN(@RC)
 END
 
 GO
-
-
-
-DECLARE @RC AS INT;
-DECLARE @FeatureClassList AS App.FeatureClassList;
-
-INSERT INTO @FeatureClassList (FeatureClassID)
-    VALUES (41);
-
-EXEC  @RC =  [App].[FeatureSearchManager]
-
-@MaximumNumberOfSearchCandidates  = 50
-
-@FeatureNameSearchRequest = 'Jen Weld',
-
-@Latitude  =  45.528666,
-@Longitude  = -122.694135,
-@DistanceInKilometers  =  5 ,
-
-@StatePostalCode = 'OR',
-
-@FeatureClassList = @FeatureClassList
-;
-
-
-
-
-
-
- 

@@ -1,26 +1,59 @@
 Use Gazetteer;
 GO
 
+/*
+    Demo nun.
+*/
 DECLARE @RC AS INT;
 DECLARE @FeatureClassList AS App.FeatureClassList;
 
 INSERT INTO @FeatureClassList (FeatureClassID)
     VALUES (41);
 
-EXEC  @RC =  [App].[FeatureSearchManager]
+DECLARE @FeaturesFound as Table (FeatureID INT NOT NULL, DistanceInMeters INT NOT NULL);
 
-@MaximumNumberOfSearchCandidates  = 50
+--INSERT INTO @FeaturesFound(FeatureID , DistanceInMeters)
+    EXEC @RC = [App].[FeatureSearchManager]
 
+--required
+@MaximumNumberOfSearchCandidates  = 50,
+@CurrentLocationLatitude  =  45.528666,
+@CurrentLocationLongitude  = -122.694135,
+
+--fuzzy name search (optional)
 @FeatureNameSearchRequest = 'Jen Weld',
 
-@Latitude  =  45.528666,
-@Longitude  = -122.694135,
+--nearest neighbor (optional)
 @DistanceInKilometers  =  5 ,
 
+--state filter (optional)
 @StatePostalCode = 'OR',
 
-@FeatureClassList = @FeatureClassList
+--feature class filter (optional)
+@FeatureClassList = @FeatureClassList,
+
+@Debug = 1
 ;
+
+--SELECT 
+--         f.*,
+--        s.DistanceInMeters
+--FROM @FeaturesFound s
+--JOIN App.vFeatureData_SelectForDisplay f ON s.FeatureID = f.FeatureID
+--ORDER BY s.DistanceInMeters;
+
+
+SELECT @RC as RC;
+
+--SELECT TOP 3 * 
+--FROM AppData.ProcedureLog 
+--WHERE ProcedureName = 'FeatureSearchManager' 
+--ORDER BY ProcedureLog_pk DESC;
+
+SELECT TOP 3 * 
+FROM AppData.ProcedureLog 
+WHERE ProcedureName = 'FeatureSearchName_Select_FeatureID_ByFeatureName' 
+ORDER BY ProcedureLog_pk DESC;
 
 
 /*

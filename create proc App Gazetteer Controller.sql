@@ -25,7 +25,12 @@ BEGIN
 
                 EXEC [App].[ProcedureLog_Merge] @ProcedureLog_fk = @ProcedureLog_fk OUT, @ParameterSet = @ParameterSet, @StatusMessage = @StatusMessage, @ProcedureName = @ProcedureName;
 
-
+-                                    SELECT 
+--                                            f.*,
+--                                            s.DistanceInMeters
+--                                    FROM @FeatureSearchCandidates s
+--                                    JOIN App.vFeatureData_SelectForDisplay f ON s.FeatureID = f.FeatureID
+--                                    ORDER BY s.DistanceInMeters;
 
                SET @StatusMessage =+ App.fnStatusMessage(@StatusMessage,'Completed.', @RC);
                EXEC [App].[ProcedureLog_Merge] @ProcedureLog_fk = @ProcedureLog_fk, @StatusMessage = @StatusMessage, @ReturnCode = @RC;
