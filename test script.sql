@@ -45,10 +45,10 @@ DECLARE @FeaturesFound as Table (FeatureID INT NOT NULL, DistanceInMeters INT NO
 
 SELECT @RC as RC;
 
---SELECT TOP 3 * 
---FROM AppData.ProcedureLog 
---WHERE ProcedureName = 'FeatureSearchManager' 
---ORDER BY ProcedureLog_pk DESC;
+SELECT TOP 3 * 
+FROM AppData.ProcedureLog 
+WHERE ProcedureName = 'FeatureSearchManager' 
+ORDER BY ProcedureLog_pk DESC;
 
 SELECT TOP 3 * 
 FROM AppData.ProcedureLog 

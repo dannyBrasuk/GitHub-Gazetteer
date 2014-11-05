@@ -11,6 +11,8 @@ CREATE PROCEDURE [App].[FeatureSearchName_Select_FeatureID_ByFeatureName]
 --Feature Name Search (fuzzy)
 @FeatureNameSearchRequest AS App.NameSearchRequestList READONLY,
 
+@MaximumNumberOfMatches INT = 1,
+
 @Debug BIT = 0
 
 AS
@@ -66,10 +68,11 @@ BEGIN
 --Note:  cannot be feature ID since its one to many
                 INSERT INTO @FeatureSearchCandidateNames   (SourceKey, SourceString)
                         SELECT 
-                            DISTINCT n.FeatureSearchName_pk, n.FeatureName
+                                n.FeatureSearchName_pk, n.FeatureName
                         FROM @FeatureSearchCandidates c
                         JOIN AppData.FeatureSearchName n ON c.FeatureID = n.FeatureID
  --WHERE FeatureNameSequenceNumber=1
+
                             IF @Debug = 1
                                 SELECT * FROM @FeatureSearchCandidateNames;
 
@@ -96,7 +99,7 @@ BEGIN
                 --1) percent of tokens used in matching (i.e., score of 2 or 3)
                 --2) weighted average  metaphone score,  
 
-                ;WITH ValidTokens (Tokenizer_sfk, TokenOrdinal, Token, Metaphone2)
+                ;WITH ValidInputTokens (InputTokenizer_sfk, TokenOrdinal, Token, Metaphone2)
                 AS
                 (
                     SELECT Tokenizer_sfk, TokenOrdinal, Token, Metaphone2
@@ -104,104 +107,118 @@ BEGIN
                     WHERE TokenLength > 2
 --AND  IgnoreTokenFlag = 0
                 )
-                ,TokenCounts (Tokenizer_sfk, TokenCount)
+                ,InputTokenCounts (InputTokenizer_sfk, InputTokenCount)
                 AS
                 (
                     SELECT
-                        Tokenizer_sfk,
-                        COUNT(*) AS TokenCount
-                    FROM ValidTokens
-                    GROUP BY Tokenizer_sfk
+                        InputTokenizer_sfk a,
+                        COUNT(*) AS InputTokenCount
+                    FROM ValidInputTokens
+                    GROUP BY InputTokenizer_sfk
                 )
-                 ,LevenshteinPercent (Tokenizer_sfk, TokenOrdinal, LevenshteinPercent)
+                 ,LevenshteinPercent (FeatureSearchName_pk, LevenshteinPercent)
                 AS
                 (
                     SELECT 
                         c.Tokenizer_sfk,
-                        i.TokenOrdinal,
                         App.fnLevenshteinPercent(i.Token, c.Token) AS LevenshteinPercent
-                    FROM ValidTokens  i CROSS APPLY @FeatureSearchCandidateNameTokenXRef c
+                    FROM ValidInputTokens  i CROSS APPLY @FeatureSearchCandidateNameTokenXRef c
                     WHERE
                                 App.fnLevenshteinPercent(i.Token, c.Token) > 66
                                 AND c.TokenLength > 2
 -- AND c.IgnoreTokenFlag = 0
                    )
-                 ,MetaphoneScores (Tokenizer_sfk, TokenOrdinal, MetaphoneScore)
+                 ,MetaphoneScores (FeatureSearchName_pk, MetaphoneScore)
                 AS
                 (
                     SELECT 
                         c.Tokenizer_sfk,
-                         i.TokenOrdinal,
                         App.fnDoubleMetaphoneCompare(i.Metaphone2, c.Metaphone2) AS  MetaphoneScore
-                    FROM ValidTokens  i CROSS APPLY @FeatureSearchCandidateNameTokenXRef c
+                    FROM ValidInputTokens  i CROSS APPLY @FeatureSearchCandidateNameTokenXRef c
                     WHERE
                                 App.fnDoubleMetaphoneCompare(i.Metaphone2, c.Metaphone2)  > 0
                                 AND c.TokenLength > 2
 -- AND c.IgnoreTokenFlag = 0
                    )
-                , MetaphoneAggregate (Tokenizer_sfk, CountOfTokensThatPassed, MeanMetaphoneScore, PercentTokensScored )
+                , MetaphoneAggregate (FeatureSearchName_pk, MetaphoneIndex, PercentTokensPassed )
                  AS
                  (
                         SELECT  
-                                        a.Tokenizer_sfk, CountOfTokensThatPassed, MeanMetaphoneScore,
-                                        CAST(ROUND( CAST(CountOfTokensThatPassed AS FLOAT) / CAST (TokenCount AS FLOAT)  , 2) AS INT)  PercentTokensScored
+                                        a.FeatureSearchName_pk, MetaphoneIndex,
+                                        CAST(ROUND( CAST(CountOfTokensThatPassed AS FLOAT) / CAST (InputTokenCount AS FLOAT)  , 2) AS INT)  PercentTokensPassed
                         FROM
                         (
                             SELECT 
-                                s.Tokenizer_sfk,
+                                s.FeatureSearchName_pk,
                                 COUNT(*)  as CountOfTokensThatPassed,
-                                AVG(s.MetaphoneScore) AS MeanMetaphoneScore
+                                CAST(ROUND(CAST(AVG(s.MetaphoneScore) AS FLOAT) * 100,3) AS INT) AS MetaphoneIndex     --normalize to 100
                             FROM MetaphoneScores s
-                            GROUP BY s.Tokenizer_sfk
+                            GROUP BY s.FeatureSearchName_pk
                             ) a 
-                            JOIN TokenCounts q ON a.Tokenizer_sfk  = q.Tokenizer_sfk
+                            CROSS APPLY InputTokenCounts q 
                   )
-                 , LevenshteinAggregate  (Tokenizer_sfk, CountOfTokensThatPassed, MeanLevenshteinPercent, PercentTokensScored)
+                 , LevenshteinAggregate  (FeatureSearchName_pk, LevenshteinIndex, PercentTokensPassed)
                  AS
                  (
                         SELECT
-                                a.Tokenizer_sfk, CountOfTokensThatPassed, MeanLevenshteinPercent,
-                                CAST(ROUND(CAST(CountOfTokensThatPassed AS FLOAT) / CAST (TokenCount AS FLOAT)  , 2) AS INT)  PercentTokensScored
+                                a.FeatureSearchName_pk, LevenshteinIndex,
+                                CAST(ROUND(CAST(CountOfTokensThatPassed AS FLOAT) / CAST (InputTokenCount AS FLOAT)  , 2) AS INT)  PercentTokensPassed
                         FROM
                         (
                             SELECT 
-                                s.Tokenizer_sfk,
+                                s.FeatureSearchName_pk,
                                 COUNT(*)  as CountOfTokensThatPassed,
-                                AVG(s.LevenshteinPercent) AS MeanLevenshteinPercent
+                                AVG(s.LevenshteinPercent) AS LevenshteinIndex       --its a percentage, so sort of equivalent to a normalized value
                             FROM LevenshteinPercent s 
-                            GROUP BY s.Tokenizer_sfk
+                            GROUP BY s.FeatureSearchName_pk
                           ) a 
-                            JOIN TokenCounts q ON a.Tokenizer_sfk  = q.Tokenizer_sfk
+                            CROSS APPLY InputTokenCounts q  
                     )
-                    ,PossibleMatches
+                    ,PossibleMatches  (FeatureSearchName_pk, MatchIndex)
                     AS
                     (
-                        SELECT   'Lev' AS [Method], Tokenizer_sfk, CountOfTokensThatPassed, MeanLevenshteinPercent as Score, PercentTokensScored,
-                                             RANK() OVER (ORDER BY PercentTokensScored DESC, MeanLevenshteinPercent DESC) AS RankOrder
+                        SELECT FeatureSearchName_pk, LevenshteinIndex AS MatchIndex
                         FROM LevenshteinAggregate  a
                             UNION 
-                        SELECT  'Meta' AS [Method], Tokenizer_sfk, CountOfTokensThatPassed, MeanMetaphoneScore as Score, PercentTokensScored,
-                                        RANK() OVER (ORDER BY PercentTokensScored DESC, MeanMetaphoneScore DESC) AS RankOrder
+                        SELECT FeatureSearchName_pk, MetaphoneIndex AS MatchIndex
                         FROM MetaphoneAggregate  a
                     )
+                    ,SelectionRank 
+                    AS
+                    (
+                         SELECT
+                                p.FeatureSearchName_pk,
+                                AVG(MatchIndex) AS MeanMatchIndex,
+                                RANK() OVER (ORDER BY AVG(MatchIndex)  DESC) AS RankOrder
+                         FROM PossibleMatches p
+                         GROUP BY FeatureSearchName_pk
+                     )
+                     ,TopChoices
+                     AS
+                     (
+                        SELECT
+                            n.FeatureID,
+                            n.FeatureName,
+                            r.RankOrder,
+                            ROW_NUMBER() OVER (PARTITION BY n.FeatureID ORDER BY r.RankOrder DESC, FeatureNameSequenceNumber) AS FeatureSequenceSelection
+                        FROM SelectionRank r
+                        JOIN AppData.FeatureSearchName n ON r.FeatureSearchName_pk = n.FeatureSearchName_pk
+                    )
+--pass back the feature ID, and Rank. combine with distance to further rank
                     SELECT
-                    p.Tokenizer_sfk,
-                    n.FeatureID,
-                    n.FeatureName,
-                    n.FeatureNameSequenceNumber,
-                    p.CountOfTokensThatPassed,
-                    p.PercentTokensScored,
-                    p.Score,
-                    p.RankOrder,
-                    p.[Method]
-                    FROM PossibleMatches p 
-                    JOIN AppData.FeatureSearchName n ON p.Tokenizer_sfk = n.FeatureSearchName_pk
-                    
+                            TOP (@MaximumNumberOfMatches)
+                            FeatureID,
+                            FeatureName,
+                            RankOrder
+                    FROM TopChoices
+                    WHERE FeatureSequenceSelection = 1
+                    ORDER BY RankOrder;
 
+                    SET @RC = @@RowCount;
+                    SET @StatusMessage = 'Success';
+                    EXEC [App].[ProcedureLog_Merge] @ProcedureLog_fk = @ProcedureLog_fk, @StatusMessage = @StatusMessage, @ReturnCode = @RC;
 
-                SET @StatusMessage = 'Success';
-                EXEC [App].[ProcedureLog_Merge] @ProcedureLog_fk = @ProcedureLog_fk, @StatusMessage = @StatusMessage, @ReturnCode = @RC;
-
+   
 	END TRY
   
 	BEGIN CATCH
