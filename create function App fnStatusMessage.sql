@@ -13,8 +13,9 @@ RETURNS VARCHAR(MAX)
 WITH SCHEMABINDING
 AS
 BEGIN
+
 DECLARE @TextToAppend VARCHAR(MAX) =
-        CASE WHEN @Message IS NOT NULL THEN @Message + '. '  ELSE '' END
+        CASE WHEN @Message IS NOT NULL THEN @Message + '  '  ELSE '' END
         + CASE WHEN @QuantityRecordsAffected IS NOT NULL THEN CAST (@QuantityRecordsAffected as VARCHAR(20)) + ' records affected. '   ELSE '' END
         + ' ('+ CONVERT(VARCHAR(20),CURRENT_TIMESTAMP,120) + '). '
 ; 
