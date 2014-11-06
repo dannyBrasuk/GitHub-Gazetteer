@@ -8,10 +8,10 @@ CREATE PROCEDURE [App].[FeatureSearchName_Select_FeatureID_ByFeatureName]
 --Search Target Table  (include feature ID;  limit it to the classes of interest)
 @FeatureSearchCandidates AS App.FeatureKeyList READONLY,
 
---Feature Name Search (fuzzy)
+--Input, Feature Name Search (fuzzy)
 @FeatureNameSearchRequest AS App.NameSearchRequestList READONLY,
 
-@MaximumNumberOfMatches INT = 1,
+@MaximumNumberOfMatches INT = 3,
 
 @Debug BIT = 0
 
@@ -34,16 +34,16 @@ BEGIN
 
                 EXEC [App].[ProcedureLog_Merge] @ProcedureLog_fk = @ProcedureLog_fk OUT, @ParameterSet = @ParameterSet, @StatusMessage = @StatusMessage, @ProcedureName = @ProcedureName;
 
-                --Tokenize the request / input name.  Function assumes a table of strings to shread
+                        /*
+                    Tokenize the request / input name.  Function assumes a table of strings to shread
+                */
+
                 DECLARE
                     @InputStringList AS App.TokenizerInput ,
                     @InputStringTokenXref AS App.TokenizerOutput
                 ;
                 INSERT INTO @InputStringList(SourceKey, SourceString)
                    SELECT ISNULL(NameRequestKey,1), NameRequest FROM @FeatureNameSearchRequest;
-
-                    IF @Debug  = 1
-                            SELECT * FROM @InputStringList ;
 
                 INSERT INTO @InputStringTokenXref (Tokenizer_sfk, TokenOrdinal, Token, Metaphone2)
                     SELECT 
@@ -53,51 +53,72 @@ BEGIN
                         App.fnDoubleMetaphoneEncode(Token)
                     FROM App.fnTokenizeTableOfStrings(@InputStringList);
 
---NOW join this to class key words and (historical ) , and ARTICLES  do it here, since its not generic to any tokenizeing opeation
+                    IF @Debug = 1
+                        SELECT * FROM @InputStringTokenXref ;
 
-                            IF @Debug  = 1
-                                     SELECT * FROM @InputStringTokenXref
+                /*
+                    For the search universe, get the feature names.
+                    Note that because some features have more than one name, the feature ID cannot be the uniqie key.
+                */
 
-                --Tokenize the feature names in the search target
                 DECLARE
                     @FeatureSearchCandidateNames AS App.TokenizerInput,
                     @FeatureSearchCandidateNameTokenXRef AS App.TokenizerOutput
                 ;
 
-                --get the feature names to search against
---Note:  cannot be feature ID since its one to many
                 INSERT INTO @FeatureSearchCandidateNames   (SourceKey, SourceString)
                         SELECT 
                                 n.FeatureSearchName_pk, n.FeatureName
                         FROM @FeatureSearchCandidates c
                         JOIN AppData.FeatureSearchName n ON c.FeatureID = n.FeatureID
- --WHERE FeatureNameSequenceNumber=1
 
-                            IF @Debug = 1
-                                SELECT * FROM @FeatureSearchCandidateNames;
+                /*
+                    Tokenize the feature candidates
+                */
+                
+           IF @Debug = 1
+                   SELECT CURRENT_TIMESTAMP AS [Shredding Started On Feature Candidate List]
 
-
-
-                --tokenize
-                --in the tokenizer, flag the tokens ot ignore
-                --TODO:   Deal with "(historical)"  using some sort of bit flag to say, ignore,  in the token list
-
-                INSERT INTO @FeatureSearchCandidateNameTokenXRef (Tokenizer_sfk, TokenOrdinal, Token, Metaphone2)
+            INSERT INTO @FeatureSearchCandidateNameTokenXRef (Tokenizer_sfk, TokenOrdinal, Token, Metaphone2)
                     SELECT 
-                        CAST(SourceKey AS INT),
---inconsisteny in data types!
+                        CAST(SourceKey AS INT),             ----TODO inconsisteny in data types!  
                         TokenOrdinal,
                         Token,
                         App.fnDoubleMetaphoneEncode(Token)
                     FROM App.fnTokenizeTableOfStrings(@FeatureSearchCandidateNames)  ;
 
-                            IF @Debug = 1
-                                    SELECT * FROM @FeatureSearchCandidateNameTokenXRef;
+            IF @Debug = 1
+                   SELECT CURRENT_TIMESTAMP AS [Shredding Ended On Feature Candidate List];
 
-                --Metaphone scoring  TODO convert to function, wiht two tables as input
---ranking 
-                --1) percent of tokens used in matching (i.e., score of 2 or 3)
-                --2) weighted average  metaphone score,  
+            IF @Debug = 1
+                SELECT * FROM @FeatureSearchCandidateNameTokenXRef ;
+/*
+    These two steps are unqiue to the Gazetteer data set. There are more efficeint ways to handle them.
+
+    -Key words like "Park" and "Cemetary" only server to distort the match score.
+    -Note that I'm ignoring the phrases like Post Office for now.
+
+
+*/
+                UPDATE @FeatureSearchCandidateNameTokenXRef 
+                SET IgnoreTokenFlag = 1
+                WHERE TOKEN = '(Historical)';
+
+                UPDATE @FeatureSearchCandidateNameTokenXRef 
+                SET IgnoreTokenFlag = 1
+                FROM AppData.FeatureClassFilter c JOIN @FeatureSearchCandidateNameTokenXRef  f
+                ON f.TOKEN = c.FeatureClassName;
+
+                IF @Debug = 1
+                        SELECT IgnoreTokenFlag, COUNT(*) AS [Token Count]  
+                        FROM @FeatureSearchCandidateNameTokenXRef
+                        GROUP BY IgnoreTokenFlag
+                /*
+                    Scoring. 
+                */
+
+            IF @Debug = 1
+                   SELECT CURRENT_TIMESTAMP AS [Matching Started];
 
                 ;WITH ValidInputTokens (InputTokenizer_sfk, TokenOrdinal, Token, Metaphone2)
                 AS
@@ -105,7 +126,7 @@ BEGIN
                     SELECT Tokenizer_sfk, TokenOrdinal, Token, Metaphone2
                     FROM  @InputStringTokenXref
                     WHERE TokenLength > 2
---AND  IgnoreTokenFlag = 0
+                                    AND  IgnoreTokenFlag = 0
                 )
                 ,InputTokenCounts (InputTokenizer_sfk, InputTokenCount)
                 AS
@@ -126,7 +147,7 @@ BEGIN
                     WHERE
                                 App.fnLevenshteinPercent(i.Token, c.Token) > 66
                                 AND c.TokenLength > 2
--- AND c.IgnoreTokenFlag = 0
+                                          AND c.IgnoreTokenFlag = 0
                    )
                  ,MetaphoneScores (FeatureSearchName_pk, MetaphoneScore)
                 AS
@@ -138,7 +159,7 @@ BEGIN
                     WHERE
                                 App.fnDoubleMetaphoneCompare(i.Metaphone2, c.Metaphone2)  > 0
                                 AND c.TokenLength > 2
--- AND c.IgnoreTokenFlag = 0
+                                AND c.IgnoreTokenFlag = 0
                    )
                 , MetaphoneAggregate (FeatureSearchName_pk, MetaphoneIndex, PercentTokensPassed )
                  AS
@@ -193,26 +214,28 @@ BEGIN
                          FROM PossibleMatches p
                          GROUP BY FeatureSearchName_pk
                      )
-                     ,TopChoices
+                     ,TopChoices (FeatureID, MeanMatchIndex, RankOrder, FeatureSequenceSelection)
                      AS
                      (
                         SELECT
                             n.FeatureID,
-                            n.FeatureName,
+                            r.MeanMatchIndex,
                             r.RankOrder,
                             ROW_NUMBER() OVER (PARTITION BY n.FeatureID ORDER BY r.RankOrder DESC, FeatureNameSequenceNumber) AS FeatureSequenceSelection
                         FROM SelectionRank r
                         JOIN AppData.FeatureSearchName n ON r.FeatureSearchName_pk = n.FeatureSearchName_pk
                     )
---pass back the feature ID, and Rank. combine with distance to further rank
                     SELECT
-                            TOP (@MaximumNumberOfMatches)
-                            FeatureID,
-                            FeatureName,
-                            RankOrder
-                    FROM TopChoices
-                    WHERE FeatureSequenceSelection = 1
-                    ORDER BY RankOrder;
+                                    TOP (@MaximumNumberOfMatches)
+                                    FeatureID,
+                                    MeanMatchIndex,
+                                    RankOrder
+                            FROM TopChoices
+                            WHERE FeatureSequenceSelection = 1
+                            ORDER BY RankOrder;
+ 
+            IF @Debug = 1
+                   SELECT CURRENT_TIMESTAMP AS [Matching Ended];
 
                     SET @RC = @@RowCount;
                     SET @StatusMessage = 'Success';

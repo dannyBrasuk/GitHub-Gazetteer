@@ -8,7 +8,7 @@ CREATE FUNCTION App.fnFeatureNameSearch
                 --Search Target Table  (include feature ID;  limit it to the classes of interest)
                 @FeatureSearchCandidates AS App.FeatureKeyList READONLY,
 
-                --Feature Name Search (fuzzy)
+                --Input , Feature Name Search (fuzzy)
                 @FeatureNameSearchRequest AS App.NameSearchRequestList READONLY,
 
                 --number of candidates (possible matches) to return

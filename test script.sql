@@ -1,24 +1,43 @@
 Use Gazetteer;
 GO
 
+SET ROWCOUNT 0;
+
 /*
     Demo nun.
 */
 DECLARE @RC AS INT;
 DECLARE @FeatureClassList AS App.FeatureClassList;
 
-INSERT INTO @FeatureClassList (FeatureClassID)
-    VALUES (41);
+--INSERT INTO @FeatureClassList (FeatureClassID)
+--    VALUES (37);
 
 DECLARE @FeaturesFound as Table (FeatureID INT NOT NULL, DistanceInMeters INT NOT NULL);
 
 --INSERT INTO @FeaturesFound(FeatureID , DistanceInMeters)
-    EXEC @RC = [App].[FeatureSearchManager]
+EXEC @RC = [App].[FeatureSearchManager]
 
---required  (pcik a random spot inside the MBR of the target state)
-@MaximumNumberOfSearchCandidates  = 50,
-@CurrentLocationLatitude  =  45.528666,
-@CurrentLocationLongitude  = -122.694135,
+
+--required  
+@MaximumNumberOfSearchCandidates  = 500,
+
+@CurrentLocationLatitude  =  43.63,                 --Maine
+@CurrentLocationLongitude  =   -70.18,
+
+--@CurrentLocationLatitude  =  45.528666,       --Portland
+--@CurrentLocationLongitude  = -122.694135,
+
+
+--first level filter:   DISTANCE from current location, or STATE.  If state, suppress the disance.  Current lat/long is ok, and desirable still
+
+--nearest neighbor (option 1)
+--@DistanceInKilometers  =  100 ,
+
+--state filter (option 2)
+--@StatePostalCode = 'OR',
+--@StatePostalCode = 'GA',
+@StatePostalCode = 'ME',
+
 
 --fuzzy name search (optional)
 --@FeatureNameSearchRequest = 'Jen Weld',
@@ -28,13 +47,6 @@ DECLARE @FeaturesFound as Table (FeatureID INT NOT NULL, DistanceInMeters INT NO
 
 
 
---nearest neighbor (optional)
-@DistanceInKilometers  =  5 ,
-
---state filter (optional)
---@StatePostalCode = 'OR',
---@StatePostalCode = 'GA',
-@StatePostalCode = 'ME',
 
 --feature class filter (optional)
 @FeatureClassList = @FeatureClassList,

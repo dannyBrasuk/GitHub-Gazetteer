@@ -10,8 +10,7 @@ CREATE PROCEDURE [App].[FeatureSearchManager]
                   Always assumes a location coordinate.
             */
 
---Requireed Minimum
-@MaximumNumberOfSearchCandidates AS INT = 50,
+@MaximumNumberOfSearchCandidates AS INT = 5000,             --not sure if this is needed (used in distance scan)
 @CurrentLocationLatitude AS FLOAT =  0,
 @CurrentLocationLongitude  AS FLOAT = 0,
 
@@ -48,8 +47,8 @@ BEGIN
         BEGIN TRY
 
         DECLARE
-                @searchPoint geography = geography::Point(@CurrentLocationLatitude, @CurrentLocationLongitude, 4326) ,
-                @distanceInMeters INT = @distanceInKilometers * 1000
+                @SearchPoint geography = geography::Point(@CurrentLocationLatitude, @CurrentLocationLongitude, 4326) ,
+                @DistanceInMeters INT = @DistanceInKilometers * 1000
                 ;
         DECLARE  @FeatureSearchCandidates AS App.FeatureKeyList;
 
@@ -70,12 +69,12 @@ BEGIN
                 END
 
            /*
-                   Nearest neightbor option, ....
+                   Feature Candidates, per options selected in the interface  
+
+                   Nearest neightbor option; i.e., limit search to radius around a point (presumably the current location)
             */
 
-            IF ISNULL(@DistanceInKilometers,0) > 0
-                AND ISNULL(@CurrentLocationLatitude,0)  <> 0 
-                AND ISNULL(@CurrentLocationLongitude,0) <> 0
+            IF ISNULL(@DistanceInMeters,0) > 0 
                 BEGIN
 
                         INSERT INTO @FeatureSearchCandidates  (FeatureID, DistanceInMeters)                        
@@ -89,13 +88,13 @@ BEGIN
                END
             ELSE
                     /*
-                            OR, ... state option
+                            OR, ... state option.  (Still compute the distance, but don't filter on it. Instead, use it for ranking, later.
                    */ 
                    BEGIN
                             IF ISNULL(@StatePostalCode,'') <> ''
                                  INSERT INTO @FeatureSearchCandidates  (FeatureID,DistanceInMeters)
                                         SELECT f.FeatureID, 
-                                                          CAST(ROUND(f.geog.STDistance(@searchPoint),0) AS INT) AS DistanceInMeters
+                                                          CAST(ROUND(f.geog.STDistance(@SearchPoint),0) AS INT) AS DistanceInMeters
                                         FROM AppData.FeatureSearchFilter f
                                         JOIN AppData.StateFilter s ON f.StateFeatureID = s.FeatureID
                                         WHERE s.StatePostalCode = @StatePostalCode
@@ -146,18 +145,18 @@ BEGIN
                                 INSERT INTO @InputList(NameRequest)
                                      VALUES    (@FeatureNameSearchRequest);
 
---                              EXEC @RC = App.FeatureSearchName_Select_FeatureID_ByFeatureName
---                                    @FeatureSearchCandidates = @FeatureSearchCandidates,
---                                    @FeatureNameSearchRequest  = @InputList,
---                                    @Debug = 1
+                              IF @Debug = 0
+                                    SELECT m.FeatureID, m.MatchScore, m.MatchRankOrder, c.DistanceInMeters
+                                    FROM App.fnFeatureNameSearch ( @FeatureSearchCandidates , @InputList, @MaximumNumberOfMatches) m
+                                    JOIN @FeatureSearchCandidates c ON c.FeatureID = m.FeatureID
+                                    ORDER BY m.MatchRankOrder, c.DistanceInMeters
 
-                               
-                                SELECT m.FeatureID, m.MatchScore, m.MatchRankOrder, c.DistanceInMeters
-                                FROM App.fnFeatureNameSearch ( @FeatureSearchCandidates , @InputList, @MaximumNumberOfMatches) m
-                                JOIN @FeatureSearchCandidates c ON c.FeatureID = m.FeatureID
-                                ORDER BY m.MatchRankOrder, c.DistanceInMeters
-
-                              --JOIN BACK to Distance and FeatureNameSequenceNumber, to enhance the ranking
+                              ELSE
+                                    EXEC @RC = App.FeatureSearchName_Select_FeatureID_ByFeatureName
+                                          @FeatureSearchCandidates = @FeatureSearchCandidates,
+                                          @FeatureNameSearchRequest  = @InputList,
+                                          @Debug = 1
+        
 
                         SET @RC = @@Rowcount;        
                         SET @StatusMessage =+ App.fnStatusMessage(@StatusMessage,'Execute fuzzy name search.', @RC);
