@@ -64,17 +64,31 @@ BEGIN
                     Tokenize the feature candidates
                 */
                 
---TODO:   Deal with "(historical)"  using some sort of bit flag to say, ignore,  in the token list
---TODO:  ignore class labels (i.e., park, etc)
-
-                INSERT INTO @FeatureSearchCandidateNameTokenXRef (Tokenizer_sfk, TokenOrdinal, Token, Metaphone2)
+            INSERT INTO @FeatureSearchCandidateNameTokenXRef (Tokenizer_sfk, TokenOrdinal, Token, Metaphone2)
                     SELECT 
-                        CAST(SourceKey AS INT),
---inconsisteny in data types!
+                        CAST(SourceKey AS INT),             ----TODO inconsisteny in data types!  
                         TokenOrdinal,
                         Token,
                         App.fnDoubleMetaphoneEncode(Token)
                     FROM App.fnTokenizeTableOfStrings(@FeatureSearchCandidateNames)  ;
+
+/*
+    These two steps are unqiue to the Gazetteer data set. There are more efficeint ways to handle them.
+
+    -Key words like "Park" and "Cemetary" only server to distort the match score.
+    -Note that I'm ignoring the phrases like Post Office for now.
+
+
+*/
+                UPDATE @FeatureSearchCandidateNameTokenXRef 
+                SET IgnoreTokenFlag = 1
+                WHERE TOKEN = '(Historical)';
+
+                UPDATE @FeatureSearchCandidateNameTokenXRef 
+                SET IgnoreTokenFlag = 1
+                FROM AppData.FeatureClassFilter c JOIN @FeatureSearchCandidateNameTokenXRef  f
+                ON f.TOKEN = c.FeatureClassName;
+
 
                 /*
                     Scoring. 
@@ -86,7 +100,7 @@ BEGIN
                     SELECT Tokenizer_sfk, TokenOrdinal, Token, Metaphone2
                     FROM  @InputStringTokenXref
                     WHERE TokenLength > 2
---AND  IgnoreTokenFlag = 0
+                                    AND  IgnoreTokenFlag = 0
                 )
                 ,InputTokenCounts (InputTokenizer_sfk, InputTokenCount)
                 AS
@@ -107,7 +121,7 @@ BEGIN
                     WHERE
                                 App.fnLevenshteinPercent(i.Token, c.Token) > 66
                                 AND c.TokenLength > 2
--- AND c.IgnoreTokenFlag = 0
+                                          AND c.IgnoreTokenFlag = 0
                    )
                  ,MetaphoneScores (FeatureSearchName_pk, MetaphoneScore)
                 AS
@@ -119,7 +133,7 @@ BEGIN
                     WHERE
                                 App.fnDoubleMetaphoneCompare(i.Metaphone2, c.Metaphone2)  > 0
                                 AND c.TokenLength > 2
--- AND c.IgnoreTokenFlag = 0
+                                AND c.IgnoreTokenFlag = 0
                    )
                 , MetaphoneAggregate (FeatureSearchName_pk, MetaphoneIndex, PercentTokensPassed )
                  AS

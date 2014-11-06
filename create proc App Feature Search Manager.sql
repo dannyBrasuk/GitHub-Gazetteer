@@ -62,7 +62,8 @@ BEGIN
         /* 
             Trap for no parameters
         */
-        IF @CurrentLocationLatitude IS NULL OR @CurrentLocationLongitude IS NULL
+        IF (ISNULL(@CurrentLocationLatitude,0) = 0 OR ISNULL(@CurrentLocationLongitude,0)= 0) 
+             AND  ISNULL(@StatePostalCode,'') = ''
                 BEGIN
                     SET @RC = -2;
                     RAISERROR ('Insufficient parameters. Must have at least latitude and longitude.', 16, 1);
@@ -73,6 +74,8 @@ BEGIN
             */
 
             IF ISNULL(@DistanceInKilometers,0) > 0
+                AND ISNULL(@CurrentLocationLatitude,0)  <> 0 
+                AND ISNULL(@CurrentLocationLongitude,0) <> 0
                 BEGIN
 
                         INSERT INTO @FeatureSearchCandidates  (FeatureID, DistanceInMeters)                        
@@ -98,7 +101,7 @@ BEGIN
                                         WHERE s.StatePostalCode = @StatePostalCode
 
                              SET @RC = @@Rowcount;        
-                             SET @StatusMessage =+ App.fnStatusMessage(@StatusMessage,'Nearest Neighbor completed.', @RC);
+                             SET @StatusMessage =+ App.fnStatusMessage(@StatusMessage,'State Filter completed.', @RC);
                              EXEC [App].[ProcedureLog_Merge] @ProcedureLog_fk = @ProcedureLog_fk, @StatusMessage = @StatusMessage;
 
                     END
