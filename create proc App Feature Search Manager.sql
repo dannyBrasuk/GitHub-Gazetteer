@@ -17,6 +17,7 @@ CREATE PROCEDURE [App].[FeatureSearchManager]
 
 --Feature Name Search (fuzzy)
 @FeatureNameSearchRequest AS VARCHAR(120) = '',
+@MaximumNumberOfMatches INT = 1,
 
 --Nearest neighbor option.  Note the Kilometers dimension.
 @DistanceInKilometers AS INT =  0 ,
@@ -137,15 +138,21 @@ BEGIN
                 IF ISNULL(@FeatureNameSearchRequest,'') <> ''
 
                     BEGIN
---convert to a table function
+
                                DECLARE  @InputList AS App.NameSearchRequestList;
                                 INSERT INTO @InputList(NameRequest)
                                      VALUES    (@FeatureNameSearchRequest);
 
-                              EXEC @RC = App.FeatureSearchName_Select_FeatureID_ByFeatureName
-                                    @FeatureSearchCandidates = @FeatureSearchCandidates,
-                                    @FeatureNameSearchRequest  = @InputList,
-                                    @Debug = 1
+--                              EXEC @RC = App.FeatureSearchName_Select_FeatureID_ByFeatureName
+--                                    @FeatureSearchCandidates = @FeatureSearchCandidates,
+--                                    @FeatureNameSearchRequest  = @InputList,
+--                                    @Debug = 1
+
+                               
+                                SELECT m.FeatureID, m.MatchScore, m.MatchRankOrder, c.DistanceInMeters
+                                FROM App.fnFeatureNameSearch ( @FeatureSearchCandidates , @InputList, @MaximumNumberOfMatches) m
+                                JOIN @FeatureSearchCandidates c ON c.FeatureID = m.FeatureID
+                                ORDER BY m.MatchRankOrder, c.DistanceInMeters
 
                               --JOIN BACK to Distance and FeatureNameSequenceNumber, to enhance the ranking
 

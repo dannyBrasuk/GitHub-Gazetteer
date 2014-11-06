@@ -22,6 +22,7 @@ DECLARE @FeaturesFound as Table (FeatureID INT NOT NULL, DistanceInMeters INT NO
 
 --fuzzy name search (optional)
 @FeatureNameSearchRequest = 'Jen Weld',
+@MaximumNumberOfMatches = 3,
 
 --nearest neighbor (optional)
 @DistanceInKilometers  =  5 ,

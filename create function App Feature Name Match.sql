@@ -9,22 +9,32 @@ CREATE FUNCTION App.fnFeatureNameSearch
                 @FeatureSearchCandidates AS App.FeatureKeyList READONLY,
 
                 --Feature Name Search (fuzzy)
-                @FeatureNameSearchRequest AS App.NameSearchRequestList READONLY
+                @FeatureNameSearchRequest AS App.NameSearchRequestList READONLY,
+
+                --number of candidates (possible matches) to return
+                 @MaximumNumberOfMatches INT = 1
+
                 )
-RETURNS @MatchingFeature  TABLE 
+RETURNS @PossibleMatchingFeaturesList  TABLE 
 (
-  FeatureID INT, MatchStrengthRank INT
+    FeatureID INT NOT NULL, 
+    MatchRankOrder INT NOT NULL,
+    MatchScore INT NOT NULL
 )
 --WITH SCHEMABINDING
 AS
 BEGIN
+  
+                /*
+                    Tokenize the request / input name.  Function assumes a table of strings to shread
+                */
 
-              DECLARE
+                DECLARE
                     @InputStringList AS App.TokenizerInput ,
                     @InputStringTokenXref AS App.TokenizerOutput
                 ;
                 INSERT INTO @InputStringList(SourceKey, SourceString)
-                    SELECT ISNULL(NameRequestKey,1) , NameRequest FROM @FeatureNameSearchRequest;
+                   SELECT ISNULL(NameRequestKey,1), NameRequest FROM @FeatureNameSearchRequest;
 
                 INSERT INTO @InputStringTokenXref (Tokenizer_sfk, TokenOrdinal, Token, Metaphone2)
                     SELECT 
@@ -34,27 +44,28 @@ BEGIN
                         App.fnDoubleMetaphoneEncode(Token)
                     FROM App.fnTokenizeTableOfStrings(@InputStringList);
 
---NOW join this to class key words and (historical ) , and ARTICLES  do it here, since its not generic to any tokenizeing opeation
+                /*
+                    For the search universe, get the feature names.
+                    Note that because some features have more than one name, the feature ID cannot be the uniqie key.
+                */
 
-                --Tokenize the feature names in the search target
                 DECLARE
                     @FeatureSearchCandidateNames AS App.TokenizerInput,
                     @FeatureSearchCandidateNameTokenXRef AS App.TokenizerOutput
                 ;
 
-                --get the feature names to search against
---Note:  cannot be feature ID since its one to many
                 INSERT INTO @FeatureSearchCandidateNames   (SourceKey, SourceString)
                         SELECT 
-                            DISTINCT n.FeatureSearchName_pk, n.FeatureName
+                                n.FeatureSearchName_pk, n.FeatureName
                         FROM @FeatureSearchCandidates c
                         JOIN AppData.FeatureSearchName n ON c.FeatureID = n.FeatureID
- WHERE FeatureNameSequenceNumber=1
-                            IF @Debug = 1
-                                SELECT * FROM @FeatureSearchCandidateNames;
-                --tokenize
-                --in the tokenizer, flag the tokens ot ignore
-                --TODO:   Deal with "(historical)"  using some sort of bit flag to say, ignore,  in the token list
+
+                /*
+                    Tokenize the feature candidates
+                */
+                
+--TODO:   Deal with "(historical)"  using some sort of bit flag to say, ignore,  in the token list
+--TODO:  ignore class labels (i.e., park, etc)
 
                 INSERT INTO @FeatureSearchCandidateNameTokenXRef (Tokenizer_sfk, TokenOrdinal, Token, Metaphone2)
                     SELECT 
@@ -65,69 +76,124 @@ BEGIN
                         App.fnDoubleMetaphoneEncode(Token)
                     FROM App.fnTokenizeTableOfStrings(@FeatureSearchCandidateNames)  ;
 
-                            IF @Debug = 1
-                                    SELECT * FROM @FeatureSearchCandidateNameTokenXRef;
+                /*
+                    Scoring. 
+                */
 
-                --Metaphone scoring  TODO convert to function, wiht two tables as input
---ranking 
-                --1) percent of tokens used in matching (i.e., score of 2 or 3)
-                --2) weighted average  metaphone score,  
-
-                ;WITH TokenCounts (Tokenizer_sfk, TokenCount)
+                ;WITH ValidInputTokens (InputTokenizer_sfk, TokenOrdinal, Token, Metaphone2)
+                AS
+                (
+                    SELECT Tokenizer_sfk, TokenOrdinal, Token, Metaphone2
+                    FROM  @InputStringTokenXref
+                    WHERE TokenLength > 2
+--AND  IgnoreTokenFlag = 0
+                )
+                ,InputTokenCounts (InputTokenizer_sfk, InputTokenCount)
                 AS
                 (
                     SELECT
-                        c.Tokenizer_sfk,
-                        COUNT(*) AS TokenCount
-                    FROM @FeatureSearchCandidateNameTokenXRef c
---WHERE c.IgnoreTokenFlag = 0
-                    GROUP BY c.Tokenizer_sfk
+                        InputTokenizer_sfk a,
+                        COUNT(*) AS InputTokenCount
+                    FROM ValidInputTokens
+                    GROUP BY InputTokenizer_sfk
                 )
-                 ,TokenScores
+                 ,LevenshteinPercent (FeatureSearchName_pk, LevenshteinPercent)
                 AS
                 (
                     SELECT 
                         c.Tokenizer_sfk,
-                            --   c.TokenOrdinal,
-                        App.fnDoubleMetaphoneCompare(i.Metaphone2, c.Metaphone2) AS  MetaphoneScore,
                         App.fnLevenshteinPercent(i.Token, c.Token) AS LevenshteinPercent
-                    FROM @InputStringTokenXref  i CROSS APPLY @FeatureSearchCandidateNameTokenXRef c
+                    FROM ValidInputTokens  i CROSS APPLY @FeatureSearchCandidateNameTokenXRef c
                     WHERE
-                           (
-                                App.fnDoubleMetaphoneCompare(i.Metaphone2, c.Metaphone2)  > 0
-                                OR
                                 App.fnLevenshteinPercent(i.Token, c.Token) > 66
-                            ) AND i.TokenLength > 2 AND c.TokenLength > 2
--- AND i.IgnoreTokenFlag = 0
+                                AND c.TokenLength > 2
 -- AND c.IgnoreTokenFlag = 0
                    )
-                 , PossibleMatches
+                 ,MetaphoneScores (FeatureSearchName_pk, MetaphoneScore)
+                AS
+                (
+                    SELECT 
+                        c.Tokenizer_sfk,
+                        App.fnDoubleMetaphoneCompare(i.Metaphone2, c.Metaphone2) AS  MetaphoneScore
+                    FROM ValidInputTokens  i CROSS APPLY @FeatureSearchCandidateNameTokenXRef c
+                    WHERE
+                                App.fnDoubleMetaphoneCompare(i.Metaphone2, c.Metaphone2)  > 0
+                                AND c.TokenLength > 2
+-- AND c.IgnoreTokenFlag = 0
+                   )
+                , MetaphoneAggregate (FeatureSearchName_pk, MetaphoneIndex, PercentTokensPassed )
                  AS
                  (
-                    SELECT 
-                        s.Tokenizer_sfk,
-                        COUNT(*)  as CountOfTokensThatPassed,
-                        MAX(q.TokenCount) AS TokenCount,
-                        AVG(s.MetaphoneScore) AS MeanMetaphoneScore,
-                        AVG(s.LevenshteinPercent) AS MeanLevenshteinPercent
-                    FROM TokenScores s JOIN TokenCounts q ON s.Tokenizer_sfk  = q.Tokenizer_sfk
-                    GROUP BY s.Tokenizer_sfk
+                        SELECT  
+                                        a.FeatureSearchName_pk, MetaphoneIndex,
+                                        CAST(ROUND( CAST(CountOfTokensThatPassed AS FLOAT) / CAST (InputTokenCount AS FLOAT)  , 2) AS INT)  PercentTokensPassed
+                        FROM
+                        (
+                            SELECT 
+                                s.FeatureSearchName_pk,
+                                COUNT(*)  as CountOfTokensThatPassed,
+                                CAST(ROUND(CAST(AVG(s.MetaphoneScore) AS FLOAT) * 100,3) AS INT) AS MetaphoneIndex     --normalize to 100
+                            FROM MetaphoneScores s
+                            GROUP BY s.FeatureSearchName_pk
+                            ) a 
+                            CROSS APPLY InputTokenCounts q 
+                  )
+                 , LevenshteinAggregate  (FeatureSearchName_pk, LevenshteinIndex, PercentTokensPassed)
+                 AS
+                 (
+                        SELECT
+                                a.FeatureSearchName_pk, LevenshteinIndex,
+                                CAST(ROUND(CAST(CountOfTokensThatPassed AS FLOAT) / CAST (InputTokenCount AS FLOAT)  , 2) AS INT)  PercentTokensPassed
+                        FROM
+                        (
+                            SELECT 
+                                s.FeatureSearchName_pk,
+                                COUNT(*)  as CountOfTokensThatPassed,
+                                AVG(s.LevenshteinPercent) AS LevenshteinIndex       --its a percentage, so sort of equivalent to a normalized value
+                            FROM LevenshteinPercent s 
+                            GROUP BY s.FeatureSearchName_pk
+                          ) a 
+                            CROSS APPLY InputTokenCounts q  
                     )
-                    SELECT
-                         p.Tokenizer_sfk,
-                         n.FeatureID,
-                         n.FeatureName,
-                         n.FeatureNameSequenceNumber,
-                         p.CountOfTokensThatPassed,
-                         p.TokenCount ,
-                         p.MeanMetaphoneScore,
-                         p.MeanLevenshteinPercent
-                    FROM PossibleMatches p 
-                    JOIN AppData.FeatureSearchName n ON p.Tokenizer_sfk = n.FeatureSearchName_pk
-                    
- 
-   --     INSERT INTO   @MatchingFeature (FeatureID, MatchStrengthRank)
- 
+                    ,PossibleMatches  (FeatureSearchName_pk, MatchIndex)
+                    AS
+                    (
+                        SELECT FeatureSearchName_pk, LevenshteinIndex AS MatchIndex
+                        FROM LevenshteinAggregate  a
+                            UNION 
+                        SELECT FeatureSearchName_pk, MetaphoneIndex AS MatchIndex
+                        FROM MetaphoneAggregate  a
+                    )
+                    ,SelectionRank 
+                    AS
+                    (
+                         SELECT
+                                p.FeatureSearchName_pk,
+                                AVG(MatchIndex) AS MeanMatchIndex,
+                                RANK() OVER (ORDER BY AVG(MatchIndex)  DESC) AS RankOrder
+                         FROM PossibleMatches p
+                         GROUP BY FeatureSearchName_pk
+                     )
+                     ,TopChoices (FeatureID, MeanMatchIndex, RankOrder, FeatureSequenceSelection)
+                     AS
+                     (
+                        SELECT
+                            n.FeatureID,
+                            r.MeanMatchIndex,
+                            r.RankOrder,
+                            ROW_NUMBER() OVER (PARTITION BY n.FeatureID ORDER BY r.RankOrder DESC, FeatureNameSequenceNumber) AS FeatureSequenceSelection
+                        FROM SelectionRank r
+                        JOIN AppData.FeatureSearchName n ON r.FeatureSearchName_pk = n.FeatureSearchName_pk
+                    )
+                    INSERT INTO @PossibleMatchingFeaturesList (FeatureID, MatchScore, MatchRankOrder)
+                            SELECT
+                                    TOP (@MaximumNumberOfMatches)
+                                    FeatureID,
+                                    MeanMatchIndex,
+                                    RankOrder
+                            FROM TopChoices
+                            WHERE FeatureSequenceSelection = 1
+                            ORDER BY RankOrder;
  
           RETURN
 END
