@@ -9,8 +9,8 @@ SET ROWCOUNT 0;
 DECLARE @RC AS INT;
 DECLARE @FeatureClassList AS App.FeatureClassList;
 
---INSERT INTO @FeatureClassList (FeatureClassID)
---    VALUES (37);
+INSERT INTO @FeatureClassList (FeatureClassID)
+    VALUES (37);
 
 DECLARE @FeaturesFound as Table (FeatureID INT NOT NULL, DistanceInMeters INT NOT NULL);
 
@@ -18,7 +18,7 @@ DECLARE @FeaturesFound as Table (FeatureID INT NOT NULL, DistanceInMeters INT NO
 EXEC @RC = [App].[FeatureSearchManager]
 
 
---required  
+--required    (only applies to nearest neighbor right now)
 @MaximumNumberOfSearchCandidates  = 500,
 
 @CurrentLocationLatitude  =  43.63,                 --Maine
